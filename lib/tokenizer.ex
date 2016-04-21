@@ -19,13 +19,25 @@ defmodule Stache.Tokenizer do
     tokens = add_token(tokens, :triple, acc)
     chunk_tokens(stream, tokens, :text, "")
   end
+  def chunk_tokens(["{", "{", s | stream], tokens, :text, acc) when s in ["#", "^", "!", "/", ">"] do
+    tag = case s do
+      "#" -> :begin_section
+      "!" -> :comment
+      "^" -> :begin_inverted
+      "/" -> :end_section
+      ">" -> :partial
+    end
+    tokens = add_token(tokens, :text, acc)
+    chunk_tokens(stream, tokens, tag, "")
+  end
   def chunk_tokens(["{", "{" | stream], tokens, :text, acc) do
     tokens = add_token(tokens, :text, acc)
     chunk_tokens(stream, tokens, :double, "")
   end
-  def chunk_tokens(["}", "}" | stream], tokens, :double, acc) do
-    # We've found a closing }}} after an open {{{.
-    tokens = add_token(tokens, :double, acc)
+  def chunk_tokens(["}", "}" | stream], tokens, s, acc)
+    when s in [:double, :comment, :begin_section, :begin_inverted, :end_section, :partial] do
+
+    tokens = add_token(tokens, s, acc)
     chunk_tokens(stream, tokens, :text, "")
   end
   def chunk_tokens([c | stream], tokens, state, acc) do

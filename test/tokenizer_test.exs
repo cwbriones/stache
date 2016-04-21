@@ -29,4 +29,28 @@ defmodule TokenizerTest do
       %{token: :text, contents: "</pre>"}
     ]
   end
+
+  test "tokeninizing a comment" do
+    assert tokenize("{{! some comment }}") == [%{token: :comment, contents: " some comment "}]
+  end
+
+  test "tokeninizing a section" do
+    assert tokenize("{{#section}}foo{{/section}}") == [
+      %{token: :begin_section, contents: "section"},
+      %{token: :text, contents: "foo"},
+      %{token: :end_section, contents: "section"}
+    ]
+  end
+
+  test "tokeninizing an inverted section" do
+    assert tokenize("{{^section}}foo{{/section}}") == [
+      %{token: :begin_inverted, contents: "section"},
+      %{token: :text, contents: "foo"},
+      %{token: :end_section, contents: "section"}
+    ]
+  end
+
+  test "tokenizing a partial" do
+    assert tokenize("{{>foo}}") == [%{token: :partial, contents: "foo"}]
+  end
 end

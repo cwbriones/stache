@@ -1,0 +1,2 @@
+defmodule Stache do
+end

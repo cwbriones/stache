@@ -36,17 +36,17 @@ defmodule TokenizerTest do
 
   test "tokeninizing a section" do
     assert tokenize("{{#section}}foo{{/section}}") == [
-      {:begin_section,'section'},
+      {:section,'section'},
       {:text, 'foo'},
-      {:end_section, 'section'}
+      {:end, 'section'}
     ]
   end
 
   test "tokeninizing an inverted section" do
     assert tokenize("{{^section}}foo{{/section}}") == [
-      {:begin_inverted, 'section'},
+      {:inverted, 'section'},
       {:text, 'foo'},
-      {:end_section, 'section'}
+      {:end, 'section'}
     ]
   end
 

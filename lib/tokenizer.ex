@@ -21,10 +21,10 @@ defmodule Stache.Tokenizer do
   end
   def chunk_tokens('{{' ++ [s|stream], tokens, :text, acc) when s in [?#, ?^, ?!, ?/, ?>] do
     tag = case s do
-      ?# -> :begin_section
+      ?# -> :section
       ?! -> :comment
-      ?^ -> :begin_inverted
-      ?/ -> :end_section
+      ?^ -> :inverted
+      ?/ -> :end
       ?> -> :partial
     end
     tokens = add_token(tokens, :text, acc)
@@ -35,7 +35,7 @@ defmodule Stache.Tokenizer do
     chunk_tokens(stream, tokens, :double, [])
   end
   def chunk_tokens('}}' ++ stream, tokens, s, acc)
-    when s in [:double, :comment, :begin_section, :begin_inverted, :end_section, :partial] do
+    when s in [:double, :comment, :section, :inverted, :end, :partial] do
 
     tokens = add_token(tokens, s, acc)
     chunk_tokens(stream, tokens, :text, [])

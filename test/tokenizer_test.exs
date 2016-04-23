@@ -63,12 +63,18 @@ defmodule TokenizerTest do
     assert tokenize("{{>foo}}") == [{:partial, 1, "foo"}]
   end
 
+  test "whitespace should be preserved in plain-text" do
+    assert tokenize("\n foo bar baz   \n\n") == [{:text, 4, "\n foo bar baz   \n\n"}]
+  end
+
   test "line numbers are counted" do
     assert tokenize("{{foo}}\n{{>bar}}\n{{{baz}}}\nqux") == [
       {:double, 1, "foo"},
+      {:text, 2, "\n"},
       {:partial, 2, "bar"},
+      {:text, 3, "\n"},
       {:triple, 3, "baz"},
-      {:text, 4, "qux"}
+      {:text, 4, "\nqux"}
     ]
   end
 end

@@ -48,7 +48,7 @@ defmodule Stache.Tokenizer do
       '}}}' ++ _ -> {:error, line, "Unexpected \"}}}\"."}
       '{{' ++ _  -> {:error, line, "Unexpected \"{{\"."}
       '}}' ++ _  -> {:error, line, "Unexpected \"}}\"."}
-      [?\n | next] -> chunk_tokens(next, tokens, state, line + 1, buffer)
+      [?\n | next] -> chunk_tokens(next, tokens, state, line + 1, [?\n|buffer])
       [c | next]   -> chunk_tokens(next, tokens, state, line, [c|buffer])
     end
   end

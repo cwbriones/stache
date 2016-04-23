@@ -4,8 +4,17 @@ defmodule Stache.Util do
   def escaped_var(scope, var), do: var(scope, var) |> escape_html
 
   def scoped_lookup([], _vars), do: nil
-  def scoped_lookup([s|scope], vars) do
-    get_in(s, vars) || scoped_lookup(scope, vars)
+  def scoped_lookup([s|scopes], [v]) do
+    case Access.fetch(s, v) do
+      {:ok, value} -> value
+      :error -> scoped_lookup(scopes, [v])
+    end
+  end
+  def scoped_lookup([s|scopes], all_vars = [v|vars]) do
+    case Access.fetch(s, v) do
+      {:ok, value} -> get_in value, vars
+      :error -> scoped_lookup(scopes, all_vars)
+    end
   end
 
   def escape_html(text) do

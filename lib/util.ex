@@ -8,5 +8,15 @@ defmodule Stache.Util do
     get_in(s, vars) || scoped_lookup(scope, vars)
   end
 
-  def escape_html(text), do: text
+  def escape_html(text) do
+    text
+    |> String.codepoints
+    |> escape_html("")
+  end
+
+  for {k, v} <- [{"&", "&amp;"}, {"<", "&lt;"}, {">", "&gt;"}, {"\"", "&quot;"}] do
+    def escape_html([unquote(k)|text], buffer), do: escape_html(text, buffer <> unquote(v))
+  end
+  def escape_html([t|text], buffer), do: escape_html(text, buffer <> t)
+  def escape_html([], buffer), do: buffer
 end

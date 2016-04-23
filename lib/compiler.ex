@@ -41,14 +41,14 @@ defmodule Stache.Compiler do
   def generate_buffer([{:double, keys}|tree], buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
     buffer = quote do
-      unquote(buffer) <> Stache.Util.var(var!(stache_assigns), unquote(vars))
+      unquote(buffer) <> Stache.Util.escaped_var(var!(stache_assigns), unquote(vars))
     end
     generate_buffer(tree, buffer)
   end
   def generate_buffer([{:triple, keys}|tree], buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
     buffer = quote do
-      unquote(buffer) <> Stache.Util.escaped_var(var!(stache_assigns), unquote(vars))
+      unquote(buffer) <> Stache.Util.var(var!(stache_assigns), unquote(vars))
     end
     generate_buffer(tree, buffer)
   end

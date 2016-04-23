@@ -5,7 +5,7 @@ defmodule SpecTest do
     @specdir "test/specs"
     @ignore [
       :lambdas, :delimiters, :inverted,
-      :partials, :sections, :interpolation, :comments
+      :partials, :sections, :comments
     ]
 
     def load_specs do
@@ -44,7 +44,7 @@ defmodule SpecTest do
       <> "\n     template: #{inspect tem}\n"
 
     test name do
-      assert Stache.render_from_string(@tem, @data) == @exp
+      assert Stache.eval_string(@tem, @data) == @exp
     end
   end
 end

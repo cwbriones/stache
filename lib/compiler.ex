@@ -9,7 +9,7 @@ defmodule Stache.Compiler do
       e = {:error, _, _} -> e
       tokens ->
         case parse(tokens, []) do
-          {:ok, parsed} -> {:ok, to_quoted(parsed)}
+          {:ok, parsed} -> {:ok, generate_buffer(parsed, "")}
           e = {:error, _, _} -> e
         end
     end
@@ -29,7 +29,51 @@ defmodule Stache.Compiler do
     end
   end
 
-  defp to_quoted(body), do: body
+  @doc false
+  # Translates a compiled file into a quoted elixir expression
+  # for evaluation
+  def generate_buffer(tree, buffer \\ "")
+  def generate_buffer([], buffer), do: buffer
+  def generate_buffer([{:text, text}|tree], buffer) do
+    buffer = quote do: unquote(buffer) <> unquote(text)
+    generate_buffer(tree, buffer)
+  end
+  def generate_buffer([{:double, keys}|tree], buffer) do
+    vars = Enum.map(keys, &String.to_atom/1)
+    buffer = quote do
+      unquote(buffer) <> Stache.Util.var(var!(stache_assigns), unquote(vars))
+    end
+    generate_buffer(tree, buffer)
+  end
+  def generate_buffer([{:triple, keys}|tree], buffer) do
+    vars = Enum.map(keys, &String.to_atom/1)
+    buffer = quote do
+      unquote(buffer) <> Stache.Util.escaped_var(var!(stache_assigns), unquote(vars))
+    end
+    generate_buffer(tree, buffer)
+  end
+  def generate_buffer([{:section, tag, inner}|tree], buffer) do
+    inner = generate_buffer(inner, "")
+    var = String.to_atom(tag)
+
+    buffer = quote do
+      section = Stache.Util.scoped_lookup(var!(stache_assigns), [unquote(var)])
+      render_inner = fn var!(stache_assigns) -> unquote(inner) end
+      unquote(buffer) <> if section do
+        cond do
+          is_list(section) ->
+            Enum.map(section, &render_inner.([&1|var!(stache_assigns)])) |> Enum.join
+          true ->
+            new_assigns = [section|var!(stache_assigns)]
+            render_inner.(new_assigns)
+        end
+      else
+        ""
+      end
+    end
+    generate_buffer(tree, buffer)
+  end
+  def generate_buffer([_|tree], buffer), do: generate_buffer(tree, buffer)
 
   # Parses a stream of tokens, nesting any sections and expanding
   # any shorthand.

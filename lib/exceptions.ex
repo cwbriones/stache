@@ -8,7 +8,10 @@ defmodule Stache.SyntaxError do
     message = Keyword.fetch!(opts, :message)
     file = Keyword.get(opts, :file, :nofile)
     line = Keyword.fetch!(opts, :line)
-    full_message = "Syntax error in #{file}:#{line}: #{message}"
+    full_message = case file do
+      :nofile -> message
+      _ -> "at #{file}:#{line}: #{message}"
+    end
     %__MODULE__{line: line, file: file, message: full_message}
   end
 end

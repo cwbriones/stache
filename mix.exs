@@ -27,6 +27,8 @@ defmodule Stache.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    []
+    [
+      {:yamler, git: "https://github.com/goertzenator/yamler", tag: "16ebac5c", only: :test}
+    ]
   end
 end

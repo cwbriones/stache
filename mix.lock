@@ -1,0 +1,2 @@
+%{"yaml_elixir": {:hex, :yaml_elixir, "1.2.0"},
+  "yamler": {:git, "https://github.com/goertzenator/yamler", "16ebac5c11fd5837a92bcb9af96e3171c907c590", [tag: "16ebac5c"]}}

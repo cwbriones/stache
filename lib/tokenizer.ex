@@ -1,15 +1,17 @@
 defmodule Stache.Tokenizer do
-  def tokenize(template) do
+  def tokenize(template, line \\ 1) do
     template
     |> String.to_char_list
-    |> chunk_tokens([], :text, 1, [])
+    |> chunk_tokens([], :text, line, [])
   end
 
   def chunk_tokens([], tokens, :text, line, buffer) do
     tokens = add_token(tokens, :text, line, buffer)
     Enum.reverse(tokens)
   end
-  def chunk_tokens([], _tokens, _, _, _), do: {:error, :eol}
+  def chunk_tokens([], _tokens, _state, line, _buffer) do
+    {:error, line, "Unexpected EOF"}
+  end
   def chunk_tokens('{{{' ++ stream, tokens, :text, line, buffer) do
     tokens = add_token(tokens, :text, line, buffer)
     chunk_tokens(stream, tokens, :triple, line, [])
@@ -40,16 +42,25 @@ defmodule Stache.Tokenizer do
     tokens = add_token(tokens, s, line, buffer)
     chunk_tokens(stream, tokens, :text, line, [])
   end
-  def chunk_tokens([?\n | stream], tokens, state, line, buffer) do
-    chunk_tokens(stream, tokens, state, line + 1, buffer)
-  end
-  def chunk_tokens([c | stream], tokens, state, line, buffer) do
-    # text plain ol' text
-    chunk_tokens(stream, tokens, state, line, [c|buffer])
+  def chunk_tokens(stream, tokens, state, line, buffer) do
+    case stream do
+      '{{{' ++ _ -> {:error, line, "Unexpected \"{{{\"."}
+      '}}}' ++ _ -> {:error, line, "Unexpected \"}}}\"."}
+      '{{' ++ _  -> {:error, line, "Unexpected \"{{\"."}
+      '}}' ++ _  -> {:error, line, "Unexpected \"}}\"."}
+      [?\n | next] -> chunk_tokens(next, tokens, state, line + 1, buffer)
+      [c | next]   -> chunk_tokens(next, tokens, state, line, [c|buffer])
+    end
   end
 
   def add_token(tokens, :text, _, []), do: tokens
   def add_token(tokens, state, line, buffer) do
-    [{state, Enum.reverse(buffer), [line: line]}|tokens]
+    buffer = buffer |> Enum.reverse |> to_string
+    contents = case state do
+      :text -> buffer
+      :comment -> buffer
+      _ -> String.strip(buffer)
+    end
+    [{state, line, contents}|tokens]
   end
 end

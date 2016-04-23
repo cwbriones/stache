@@ -4,7 +4,7 @@ defmodule Stache.Compiler do
   @doc """
   Compiles a template string into a form suitable for interpolation.
   """
-  def compile(template) do
+  def compile(template, opts \\ []) do
     template
     |> Tokenizer.tokenize
     |> parse([])

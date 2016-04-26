@@ -5,13 +5,12 @@ defmodule Stache.Compiler do
   Compiles a template string into a form suitable for interpolation.
   """
   def compile(template, _opts \\ []) do
-    case Tokenizer.tokenize(template) do
-      e = {:error, _, _} -> e
-      tokens ->
-        case parse(tokens, []) do
-          {:ok, parsed} -> {:ok, generate_buffer(parsed, "")}
-          e = {:error, _, _} -> e
-        end
+    with {:ok, tokens} <- Tokenizer.tokenize(template)
+    do
+      case parse(tokens, []) do
+        {:ok, parsed} -> {:ok, generate_buffer(parsed, "")}
+        e = {:error, _, _} -> e
+      end
     end
   end
 

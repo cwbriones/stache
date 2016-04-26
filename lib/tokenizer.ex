@@ -24,24 +24,27 @@ defmodule Stache.Tokenizer do
 
     with {:ok, tokens} <- tokenized
     do
-      {:ok, strip_comments(tokens)}
+      {:ok, strip(tokens)}
     end
   end
 
-  def strip_comments(tokens) do
+  def strip(tokens) do
     tokens
     |> Enum.chunk_by(&elem(&1, 1))
-    |> Enum.reject(&standalone_comment?/1)
+    |> Enum.map(&strip_standalone/1)
     |> List.flatten
     |> Enum.reject(&comment?/1)
   end
 
-  defp standalone_comment?(line) do
-    Enum.any?(line, &comment?/1) and Enum.all?(line, fn
-      {:comment, _, _} -> true
-      {:text, _, contents} -> String.strip(contents) == ""
-      _ -> false
+  defp strip_standalone(line) do
+    filtered = Enum.filter(line, fn
+      {:text, _, contents} -> String.strip(contents) != ""
+      _ -> true
     end)
+    case filtered do
+      [{tag, _, _}] when tag in [:comment, :end, :section, :inverted] -> filtered
+      _ -> line
+    end
   end
 
   defp comment?({:comment, _, _}), do: true
@@ -84,8 +87,9 @@ defmodule Stache.Tokenizer do
     tokenize(stream, tokens, :text, line, line, [])
   end
 
-  defp tokenize('}}\n' ++ stream, tokens, :comment, start, line, buffer) when start != line do
-    tokens = add_token(tokens, :comment, start, buffer)
+  defp tokenize('}}\n' ++ stream, tokens, s, start, line, buffer)
+    when start != line and s in [:comment, :section, :inverted, :end] do
+    tokens = add_token(tokens, s, start, buffer)
     tokenize(stream, tokens, :text, line + 1, line + 1, [])
   end
 

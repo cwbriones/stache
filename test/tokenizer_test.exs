@@ -92,4 +92,21 @@ defmodule TokenizerTest do
       {:text, 4, "qux"}
     ]}
   end
+
+  test "standalone section tags" do
+    assert tokenize("{{#begin}}\n") == {:ok, [{:section, 1, "begin"}]}
+    assert tokenize("  {{#begin}}\n") == {:ok, [{:section, 1, "begin"}]}
+    assert tokenize("  {{#begin}}  \n") == {:ok, [{:section, 1, "begin"}]}
+    assert tokenize("  {{#begin\n}}\n") == {:ok, [{:section, 1, "begin"}]}
+
+    assert tokenize("{{^begin}}\n") == {:ok, [{:inverted, 1, "begin"}]}
+    assert tokenize("  {{^begin}}\n") == {:ok, [{:inverted, 1, "begin"}]}
+    assert tokenize("  {{^begin}}  \n") == {:ok, [{:inverted, 1, "begin"}]}
+    assert tokenize("  {{^begin\n}}\n") == {:ok, [{:inverted, 1, "begin"}]}
+
+    assert tokenize("{{/begin}}\n") == {:ok, [{:end, 1, "begin"}]}
+    assert tokenize("  {{/begin}}\n") == {:ok, [{:end, 1, "begin"}]}
+    assert tokenize("  {{/begin}}  \n") == {:ok, [{:end, 1, "begin"}]}
+    assert tokenize("  {{/begin\n}}\n") == {:ok, [{:end, 1, "begin"}]}
+  end
 end

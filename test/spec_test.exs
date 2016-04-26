@@ -5,7 +5,7 @@ defmodule SpecTest do
     @specdir "test/specs"
     @ignore [
       :lambdas, :delimiters, :inverted,
-      :partials, :sections
+      :partials
     ]
 
     def load_specs do
@@ -39,12 +39,16 @@ defmodule SpecTest do
     @data data
     @exp exp
     @tem tem
-    name = desc
-      <> "\n     data:     #{inspect data}"
-      <> "\n     template: #{inspect tem}\n"
 
-    test name do
-      assert Stache.eval_string(@tem, @data) == @exp
+    test desc do
+      result = Stache.eval_string(@tem, @data)
+      message = "
+      Rendering Failed for template: #{inspect @tem}
+        context: #{inspect @data}
+        expected: #{inspect @exp}
+        rendered: #{inspect result}
+      "
+      assert result == @exp, message
     end
   end
 end

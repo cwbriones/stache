@@ -4,6 +4,7 @@ defmodule Stache.Util do
   def escaped_var(scope, var), do: var(scope, var) |> escape_html
 
   def scoped_lookup([], _vars), do: nil
+  def scoped_lookup([s|scopes], vars) when not is_map(s), do: scoped_lookup(scopes, vars)
   def scoped_lookup([s|scopes], [v]) do
     case Access.fetch(s, v) do
       {:ok, value} -> value

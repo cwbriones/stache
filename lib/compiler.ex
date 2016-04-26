@@ -78,7 +78,6 @@ defmodule Stache.Compiler do
   # Parses a stream of tokens, nesting any sections and expanding
   # any shorthand.
   defp parse([], parsed), do: {:ok, Enum.reverse(parsed)}
-  defp parse([{:comment, _, _}|tokens], parsed), do: parse(tokens, parsed)
   defp parse([{:double, line, "&" <> key}|tokens], parsed), do: parse([{:triple, line, key}|tokens], parsed)
   defp parse([{interp, line, key}|tokens], parsed) when interp in [:double, :triple] do
     with {:ok, keys} <- validate_key(key, line)

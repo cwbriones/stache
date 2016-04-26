@@ -40,7 +40,17 @@ defmodule TokenizerTest do
   end
 
   test "tokeninizing a comment" do
-    assert tokenize("{{! some comment }}") == [{:comment, 1, " some comment "}]
+    assert tokenize("{{! some comment }}") == []
+    assert tokenize("foo{{! some comment }}bar") == [{:text, 1, "foo"}, {:text, 1, "bar"}]
+  end
+
+  test "a standalone comment" do
+    assert tokenize("foo\n    {{! some comment }}") == [{:text, 1, "foo\n"}]
+    assert tokenize("foo\n{{! some comment }}     ") == [{:text, 1, "foo\n"}]
+    assert tokenize("\n{{! some comment }}     ") == [{:text, 1, "\n"}]
+    assert tokenize("{{! some comment }}     ") == []
+    assert tokenize("       {{! some comment }}     ") == []
+    assert tokenize("       {{! some comment }}\n") == []
   end
 
   test "tokeninizing a section" do
@@ -64,17 +74,22 @@ defmodule TokenizerTest do
   end
 
   test "whitespace should be preserved in plain-text" do
-    assert tokenize("\n foo bar baz   \n\n") == [{:text, 4, "\n foo bar baz   \n\n"}]
+    assert tokenize("\n foo bar baz   \n\n") == [
+      {:text, 1, "\n"},
+      {:text, 2, " foo bar baz   \n"},
+      {:text, 3, "\n"}
+    ]
   end
 
   test "line numbers are counted" do
     assert tokenize("{{foo}}\n{{>bar}}\n{{{baz}}}\nqux") == [
       {:double, 1, "foo"},
-      {:text, 2, "\n"},
+      {:text, 1, "\n"},
       {:partial, 2, "bar"},
-      {:text, 3, "\n"},
+      {:text, 2, "\n"},
       {:triple, 3, "baz"},
-      {:text, 4, "\nqux"}
+      {:text, 3, "\n"},
+      {:text, 4, "qux"}
     ]
   end
 end

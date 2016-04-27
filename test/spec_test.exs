@@ -4,8 +4,7 @@ defmodule SpecTest do
   defmodule SpecReader do
     @specdir "test/specs"
     @ignore [
-      :lambdas, :delimiters, :inverted,
-      :partials
+      :lambdas, :delimiters, :partials
     ]
 
     def load_specs do

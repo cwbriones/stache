@@ -58,17 +58,32 @@ defmodule Stache.Compiler do
     buffer = quote do
       section = Stache.Util.scoped_lookup(var!(stache_assigns), unquote(vars))
       render_inner = fn var!(stache_assigns) -> unquote(inner) end
-      unquote(buffer) <> if section do
-        cond do
-          is_list(section) ->
+      unquote(buffer) <>
+        case section do
+          s when s in [nil, false, []] -> ""
+          [_|_] ->
             Enum.map(section, &render_inner.([&1|var!(stache_assigns)])) |> Enum.join
-          true ->
+          _ ->
             new_assigns = [section|var!(stache_assigns)]
             render_inner.(new_assigns)
         end
-      else
-        ""
-      end
+    end
+    generate_buffer(tree, buffer)
+  end
+  def generate_buffer([{:inverted, keys, inner}|tree], buffer) do
+    vars = Enum.map(keys, &String.to_atom/1)
+    inner = generate_buffer(inner, "")
+
+    buffer = quote do
+      section = Stache.Util.scoped_lookup(var!(stache_assigns), unquote(vars))
+      render_inner = fn var!(stache_assigns) -> unquote(inner) end
+      unquote(buffer) <>
+        if section in [nil, false, []] do
+            new_assigns = [section|var!(stache_assigns)]
+            render_inner.(new_assigns)
+        else
+          ""
+        end
     end
     generate_buffer(tree, buffer)
   end

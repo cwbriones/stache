@@ -1,5 +1,26 @@
 defmodule Stache.Util do
-  def var(scope, var), do: scoped_lookup(scope, var) |> to_string
+  def var(scope, var) do
+    val = scoped_lookup(scope, var)
+    if is_function(val) do
+      eval_lambda(scope, val)
+    else
+      to_string(val)
+    end
+  end
+
+  def eval_lambda(scope, lambda) do
+    template = to_string(lambda.())
+    compiled = Stache.Compiler.compile!(template)
+    {result, _} = Code.eval_quoted(compiled, stache_assigns: scope)
+    result
+  end
+
+  def eval_lambda(scope, lambda, raw) do
+    template = to_string(lambda.(raw))
+    compiled = Stache.Compiler.compile!(template)
+    {result, _} = Code.eval_quoted(compiled, stache_assigns: scope)
+    result
+  end
 
   def escaped_var(scope, var), do: var(scope, var) |> escape_html
 

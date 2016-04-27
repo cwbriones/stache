@@ -60,6 +60,8 @@ defmodule Stache.Compiler do
       render_inner = fn var!(stache_assigns) -> unquote(inner) end
       unquote(buffer) <>
         case section do
+          s when is_function(s) ->
+            Stache.Util.eval_lambda(var!(stache_assigns), s, "")
           s when s in [nil, false, []] -> ""
           [_|_] ->
             Enum.map(section, &render_inner.([&1|var!(stache_assigns)])) |> Enum.join

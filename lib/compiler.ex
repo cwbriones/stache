@@ -51,12 +51,12 @@ defmodule Stache.Compiler do
     end
     generate_buffer(tree, buffer)
   end
-  def generate_buffer([{:section, tag, inner}|tree], buffer) do
+  def generate_buffer([{:section, keys, inner}|tree], buffer) do
+    vars = Enum.map(keys, &String.to_atom/1)
     inner = generate_buffer(inner, "")
-    var = String.to_atom(tag)
 
     buffer = quote do
-      section = Stache.Util.scoped_lookup(var!(stache_assigns), [unquote(var)])
+      section = Stache.Util.scoped_lookup(var!(stache_assigns), unquote(vars))
       render_inner = fn var!(stache_assigns) -> unquote(inner) end
       unquote(buffer) <> if section do
         cond do
@@ -98,22 +98,23 @@ defmodule Stache.Compiler do
   defp parse([token = {:end, _, _}|tokens], parsed) do
     {token, tokens, Enum.reverse(parsed)}
   end
-  defp parse([{section, line, tag}|tokens], parsed) when section in [:section, :inverted] do
-    with {:ok, tag} <- validate_tag(tag, line)
+  defp parse([{section, line, key}|tokens], parsed) when section in [:section, :inverted] do
+    with {:ok, keys} <- validate_key(key, line)
     do
       case parse(tokens, []) do
-        {{:end, _, ^tag}, tokens, inner} ->
-          parse(tokens, [{section, tag, inner}|parsed])
+        {{:end, _, ^key}, tokens, inner} ->
+          parse(tokens, [{section, keys, inner}|parsed])
         {{:end, line, endtag}, _, _} ->
           {:error, line, "Unexpected {{/#{endtag}}}"}
         {:ok, _} ->
-          {:error, line, "Reached EOF while searching for closing {{/#{tag}}}"}
+          {:error, line, "Reached EOF while searching for closing {{/#{key}}}"}
         error = {:error, _, _} -> error
       end
     end
   end
   defp parse([{:text, _, contents}|tokens], parsed), do: parse(tokens, [{:text, contents}|parsed])
 
+  defp validate_key(".", _line), do: {:ok, ["."]}
   defp validate_key(key, line) do
     case String.split(key, ".") do
       [""] -> {:error, line, "Interpolation key cannot be empty"}

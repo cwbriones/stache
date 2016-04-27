@@ -18,10 +18,21 @@ defmodule SpecTest do
       File.ls!(@specdir)
       |> Enum.reject(&Enum.member?(ignore, &1))
       |> Enum.map(&Path.join(@specdir, &1))
-      |> Enum.map(&:yaml.load_file(&1))
-      |> Enum.flat_map(fn {:ok, [yaml]} ->
-        keys_to_atoms(yaml["tests"])
-      end)
+      |> Enum.map(&load_tests/1)
+      |> Enum.flat_map(&prepare_tests/1)
+    end
+
+    def load_tests(file) do
+      {:ok, [yaml]} = :yaml.load_file(file)
+      {file, yaml}
+    end
+
+    def prepare_tests({file, yaml}) do
+      yaml["tests"]
+      |> keys_to_atoms
+      |> Enum.with_index
+      |> Enum.map(fn {test, idx} -> Map.merge(%{index: idx}, test) end)
+      |> Enum.map(&Map.merge(%{file: file}, &1))
     end
 
     def keys_to_atoms(list) when is_list(list) do
@@ -35,12 +46,21 @@ defmodule SpecTest do
     def keys_to_atoms(term), do: term
   end
 
-  for %{desc: desc, data: data, template: tem, expected: exp} <- SpecReader.load_specs do
+  for %{
+    file: f,
+    index: idx,
+    desc: desc,
+    data: data,
+    template: tem,
+    expected: exp
+  } <- SpecReader.load_specs do
     @data data
     @exp exp
     @tem tem
 
-    test desc do
+    name = desc <> " in file #{f}:#{idx}"
+
+    test name do
       result = Stache.eval_string(@tem, @data)
       message = "
       Rendering Failed for template: #{inspect @tem}

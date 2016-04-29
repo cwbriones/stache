@@ -1,6 +1,17 @@
 defmodule Stache.Tokenizer do
   @moduledoc false
 
+  defmodule State do
+    defstruct [
+      line: 0,
+      start: 0,
+      buffer: "",
+      mode: :text,
+      delimeters: {"{{", "}}"},
+      tokens: []
+    ]
+  end
+
   @doc """
   Tokenizes the given binary.
 
@@ -17,12 +28,8 @@ defmodule Stache.Tokenizer do
   Or {:error, line, error} in the case of errors.
   """
   def tokenize(template, line \\ 1) do
-    tokenized =
-      template
-      |> String.to_char_list
-      |> tokenize([], :text, line, line, [])
-
-    with {:ok, tokens} <- tokenized
+    state = %State{line: line, start: line}
+    with {:ok, tokens} <- tokenize_loop(template, state)
     do
       {:ok, strip(tokens)}
     end
@@ -50,75 +57,96 @@ defmodule Stache.Tokenizer do
   defp comment?({:comment, _, _}), do: true
   defp comment?(_), do: false
 
-  defp tokenize([], tokens, :text, _, line, buffer) do
-    tokens = add_token(tokens, :text, line, buffer) |> Enum.reverse
-    {:ok, tokens}
-  end
-
-  defp tokenize(stream, tokens, :text, start, line, buffer) do
-    case stream do
-      '{{{' ++ stream ->
-        tokens = add_token(tokens, :text, start, buffer)
-        tokenize(stream, tokens, :triple, line, line, [])
-      '{{' ++ [s|stream] when s in [?#, ?^, ?!, ?/, ?>] ->
-        tag = case s do
-          ?# -> :section
-          ?! -> :comment
-          ?^ -> :inverted
-          ?/ -> :end
-          ?> -> :partial
-        end
-        tokens = add_token(tokens, :text, start, buffer)
-        tokenize(stream, tokens, tag, line, line, [])
-      '{{' ++ stream ->
-        tokens = add_token(tokens, :text, start, buffer)
-        tokenize(stream, tokens, :double, line, line, [])
-      [?\n | stream] ->
-        tokens = add_token(tokens, :text, start, [?\n|buffer])
-        newline = line + 1
-        tokenize(stream, tokens, :text, newline, newline, [])
-      [c | stream] -> tokenize(stream, tokens, :text, start, line, [c|buffer])
+  defp delimeter_change(line, buffer) do
+    delimeters =
+      buffer
+      |> String.split
+      |> Enum.reject(&String.contains?(&1, "="))
+      |> Enum.map(&to_char_list/1)
+    case delimeters do
+      [fst, snd] -> {:ok, {fst, snd}}
+      _ -> {:error, line, "Improper delimeter change"}
     end
   end
 
-  defp tokenize('}}}' ++ stream, tokens, :triple, start, line, buffer) do
-    # We've found a closing }}} after an open {{{.
-    tokens = add_token(tokens, :triple, start, buffer)
-    tokenize(stream, tokens, :text, line, line, [])
+  def next_state(stream, next, state = %State{line: line}) do
+    state = add_token(state)
+    tokenize_loop(stream, %State{state| mode: next, start: line, buffer: ""})
   end
 
-  defp tokenize('}}\n' ++ stream, tokens, s, start, line, buffer)
-    when start != line and s in [:comment, :section, :inverted, :end] do
-    tokens = add_token(tokens, s, start, buffer)
-    tokenize(stream, tokens, :text, line + 1, line + 1, [])
-  end
-
-  defp tokenize('}}' ++ stream, tokens, s, start, line, buffer) do
-    tokens = add_token(tokens, s, start, buffer)
-    tokenize(stream, tokens, :text, line, line, [])
-  end
-
-  defp tokenize([], _, _, _, line, _), do: {:error, line, "Unexpected EOF"}
-
-  defp tokenize(stream, tokens, state, start, line, buffer) do
-    case stream do
-      '{{{' ++ _ -> {:error, line, "Unexpected \"{{{\"."}
-      '}}}' ++ _ -> {:error, line, "Unexpected \"}}}\"."}
-      '{{' ++ _  -> {:error, line, "Unexpected \"{{\"."}
-      '}}' ++ _  -> {:error, line, "Unexpected \"}}\"."}
-      [?\n | stream] -> tokenize(stream, tokens, state, start, line + 1, [?\n|buffer])
-      [c | stream]   -> tokenize(stream, tokens, state, start, line, [c|buffer])
-    end
-  end
-
-  defp add_token(tokens, :text, _, []), do: tokens
-  defp add_token(tokens, state, line, buffer) do
-    buffer = buffer |> Enum.reverse |> to_string
-    contents = case state do
+  defp add_token(state = %State{mode: :text, buffer: ""}), do: state
+  defp add_token(state = %State{start: start, tokens: tokens, mode: mode, buffer: buffer}) do
+    contents = case mode do
       :text -> buffer
       :comment -> buffer
       _ -> String.strip(buffer)
     end
-    [{state, line, contents}|tokens]
+    %State{state|tokens: [{mode, start, contents}|tokens]}
+  end
+
+  defp tokenize_loop("", state = %State{mode: :text}) do
+    state = add_token(state)
+    {:ok, Enum.reverse(state.tokens)}
+  end
+
+  defp tokenize_loop("", %State{line: line}), do: {:error, line, "Unexpected EOF"}
+
+  defp tokenize_loop(stream, state = %State{mode: :text, line: line, buffer: buffer}) do
+    case stream do
+      "{{{" <> stream ->
+        next_state(stream, :triple, state)
+      <<"{{", s :: binary-size(1), stream::binary>>
+        when s in ["#", "^", "!", "/", ">", "="] ->
+        next = case s do
+          "#" -> :section
+          "!" -> :comment
+          "^" -> :inverted
+          "/" -> :end
+          ">" -> :partial
+          "=" -> :delimeter
+        end
+        next_state(stream, next, state)
+      "{{" <> stream ->
+        next_state(stream, :double, state)
+      "\n" <> stream ->
+        next_state(stream, :text, %State{state|line: line + 1, buffer: buffer <> "\n"})
+      _ ->
+        {c, stream} = String.next_codepoint(stream)
+        tokenize_loop(stream, %State{state|buffer: buffer <> c})
+    end
+  end
+  defp tokenize_loop("=}}" <> stream, state = %State{mode: :delimeter, line: line, buffer: buffer}) do
+    with {:ok, delimeters} <- delimeter_change(line, buffer)
+    do
+      next_state(stream, :text, %State{state|delimeters: delimeters})
+    end
+  end
+
+  defp tokenize_loop("}}}" <> stream, state = %State{mode: :triple}) do
+    # We've found a closing }}} after an open {{{.
+    next_state(stream, :text, state)
+  end
+
+  defp tokenize_loop("}}\n" <> stream, state = %State{start: start, line: line, mode: s})
+    when start != line and s in [:comment, :section, :inverted, :end] do
+
+    next_state(stream, :text, %State{state|line: line + 1})
+  end
+
+  defp tokenize_loop("}}" <> stream, state) do
+    next_state(stream, :text, state)
+  end
+
+  defp tokenize_loop(stream, state = %State{line: line, buffer: buffer}) do
+    case stream do
+      "{{{" <> _ -> {:error, line, "Unexpected \"{{{\"."}
+      "}}}" <> _ -> {:error, line, "Unexpected \"}}}\"."}
+      "{{" <> _  -> {:error, line, "Unexpected \"{{\"."}
+      "}}" <> _  -> {:error, line, "Unexpected \"}}\"."}
+      "\n" <> stream -> tokenize_loop(stream, %State{state|line: line + 1, buffer: buffer <> "\n"})
+      _ ->
+        {c, stream} = String.next_codepoint(stream)
+        tokenize_loop(stream, %State{state|line: line, buffer: buffer <> c})
+    end
   end
 end

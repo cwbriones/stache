@@ -11,10 +11,3 @@ If [available in Hex](https://hex.pm/docs/publish), the package can be installed
         def deps do
           [{:stache, "~> 0.0.1"}]
         end
-
-  2. Ensure stache is started before your application:
-
-        def application do
-          [applications: [:stache]]
-        end
-

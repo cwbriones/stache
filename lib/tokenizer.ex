@@ -7,7 +7,8 @@ defmodule Stache.Tokenizer do
       start: 0,
       buffer: "",
       mode: :text,
-      delimeters: {"{{", "}}"},
+      delim_start: {"{{", 2},
+      delim_end: {"}}", 2},
       tokens: []
     ]
   end
@@ -40,7 +41,7 @@ defmodule Stache.Tokenizer do
     |> Enum.chunk_by(&elem(&1, 1))
     |> Enum.map(&strip_standalone/1)
     |> List.flatten
-    |> Enum.reject(&comment?/1)
+    |> Enum.reject(&comment_or_delimeter?/1)
   end
 
   defp strip_standalone(line) do
@@ -48,23 +49,30 @@ defmodule Stache.Tokenizer do
       {:text, _, contents} -> String.strip(contents) != ""
       _ -> true
     end)
+    # If there is only one token on a line other than whitespace, and the token is
+    # a control structure, we can remove the line entirely from the template.
     case filtered do
-      [{tag, _, _}] when tag in [:comment, :end, :section, :inverted] -> filtered
+      [{tag, _, _}] when tag in [:delimeter, :comment, :end, :section, :inverted] -> filtered
       _ -> line
     end
   end
 
-  defp comment?({:comment, _, _}), do: true
-  defp comment?(_), do: false
+  defp comment_or_delimeter?({:comment, _, _}), do: true
+  defp comment_or_delimeter?({:delimeter, _, _}), do: true
+  defp comment_or_delimeter?(_), do: false
 
-  defp delimeter_change(line, buffer) do
+  defp delimeter_change(state = %State{line: line, buffer: buffer}) do
     delimeters =
       buffer
       |> String.split
       |> Enum.reject(&String.contains?(&1, "="))
-      |> Enum.map(&to_char_list/1)
     case delimeters do
-      [fst, snd] -> {:ok, {fst, snd}}
+      [fst, snd] ->
+        state = %State{state|
+          delim_start: {fst, byte_size(fst)},
+          delim_end: {snd, byte_size(snd)}
+        }
+        {:ok, state}
       _ -> {:error, line, "Improper delimeter change"}
     end
   end
@@ -92,21 +100,27 @@ defmodule Stache.Tokenizer do
   defp tokenize_loop("", %State{line: line}), do: {:error, line, "Unexpected EOF"}
 
   defp tokenize_loop(stream, state = %State{mode: :text, line: line, buffer: buffer}) do
+    {delim, dsize} = state.delim_start
     case stream do
       "{{{" <> stream ->
         next_state(stream, :triple, state)
-      <<"{{", s :: binary-size(1), stream::binary>>
-        when s in ["#", "^", "!", "/", ">", "="] ->
+      <<"{{":: binary, s :: binary-size(1), stream::binary>>
+        when s in ["!", "="] ->
         next = case s do
-          "#" -> :section
           "!" -> :comment
-          "^" -> :inverted
-          "/" -> :end
-          ">" -> :partial
           "=" -> :delimeter
         end
         next_state(stream, next, state)
-      "{{" <> stream ->
+      <<^delim::binary-size(dsize), s::binary-size(1), stream::binary>>
+        when s in ["#", "^", "/", ">"] ->
+        mode = case s do
+          "#" -> :section
+          "^" -> :inverted
+          "/" -> :end
+          ">" -> :partial
+        end
+        next_state(stream, mode, state)
+      <<^delim::binary-size(dsize), stream::binary>> ->
         next_state(stream, :double, state)
       "\n" <> stream ->
         next_state(stream, :text, %State{state|line: line + 1, buffer: buffer <> "\n"})
@@ -115,11 +129,14 @@ defmodule Stache.Tokenizer do
         tokenize_loop(stream, %State{state|buffer: buffer <> c})
     end
   end
-  defp tokenize_loop("=}}" <> stream, state = %State{mode: :delimeter, line: line, buffer: buffer}) do
-    with {:ok, delimeters} <- delimeter_change(line, buffer)
-    do
-      next_state(stream, :text, %State{state|delimeters: delimeters})
-    end
+
+  defp tokenize_loop("\n" <> stream, state = %State{line: line, buffer: buffer}) do
+    tokenize_loop(stream, %State{state|line: line + 1, buffer: buffer <> "\n"})
+  end
+
+  defp tokenize_loop("=}}" <> stream, state = %State{mode: :delimeter}) do
+    with {:ok, state} <- delimeter_change(state),
+    do: next_state(stream, :text, state)
   end
 
   defp tokenize_loop("}}}" <> stream, state = %State{mode: :triple}) do
@@ -127,23 +144,22 @@ defmodule Stache.Tokenizer do
     next_state(stream, :text, state)
   end
 
-  defp tokenize_loop("}}\n" <> stream, state = %State{start: start, line: line, mode: s})
-    when start != line and s in [:comment, :section, :inverted, :end] do
-
-    next_state(stream, :text, %State{state|line: line + 1})
-  end
-
-  defp tokenize_loop("}}" <> stream, state) do
-    next_state(stream, :text, state)
-  end
-
-  defp tokenize_loop(stream, state = %State{line: line, buffer: buffer}) do
+  defp tokenize_loop(stream, state = %State{mode: m, start: start, line: line, buffer: buffer}) do
+    {delim, dsize} = state.delim_end
+    {sdelim, sdsize} = state.delim_start
     case stream do
+      <<^delim::binary-size(dsize), "\n", stream::binary>>
+        when start != line and m in [:comment, :section, :inverted, :end] ->
+        next_state(stream, :text, %State{state|line: line + 1})
+      <<^delim::binary-size(dsize), stream::binary>>
+        when m in [:double, :comment, :section, :inverted, :end, :partial] ->
+        next_state(stream, :text, state)
+      <<^delim::binary-size(dsize), _::binary>> ->
+        {:error, line, "Unexpected \"#{delim}\""}
+      <<^sdelim::binary-size(sdsize), _::binary>> ->
+        {:error, line, "Unexpected \"#{sdelim}\""}
       "{{{" <> _ -> {:error, line, "Unexpected \"{{{\"."}
       "}}}" <> _ -> {:error, line, "Unexpected \"}}}\"."}
-      "{{" <> _  -> {:error, line, "Unexpected \"{{\"."}
-      "}}" <> _  -> {:error, line, "Unexpected \"}}\"."}
-      "\n" <> stream -> tokenize_loop(stream, %State{state|line: line + 1, buffer: buffer <> "\n"})
       _ ->
         {c, stream} = String.next_codepoint(stream)
         tokenize_loop(stream, %State{state|line: line, buffer: buffer <> c})

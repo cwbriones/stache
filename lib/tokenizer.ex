@@ -4,6 +4,8 @@ defmodule Stache.Tokenizer do
   defmodule State do
     defstruct [
       line: 0,
+      pos: 0,
+      pos_start: 0,
       start: 0,
       buffer: "",
       mode: :text,
@@ -18,13 +20,13 @@ defmodule Stache.Tokenizer do
 
   Returns {:ok, list} where list is one of the following:
 
-    * `{:text, line, contents}`
-    * `{:section, line, contents}`
-    * `{:inverted, line, contents}`
-    * `{:end, line, contents}`
-    * `{:partial, line, contents}`
-    * `{:double, line, contents}`
-    * `{:triple, line, contents}`
+    * `{:text, meta, contents}`
+    * `{:section, meta, {start, end}, contents}`
+    * `{:inverted, meta, contents}`
+    * `{:end, meta, contents}`
+    * `{:partial, meta, contents}`
+    * `{:double, meta, contents}`
+    * `{:triple, meta, contents}`
 
   Or {:error, line, error} in the case of errors.
   """
@@ -38,7 +40,7 @@ defmodule Stache.Tokenizer do
 
   def strip(tokens) do
     tokens
-    |> Enum.chunk_by(&elem(&1, 1))
+    |> Enum.chunk_by(fn t -> elem(t, 1) |> Access.get(:line) end)
     |> Enum.map(&strip_standalone/1)
     |> List.flatten
     |> Enum.reject(&comment_or_delimeter?/1)
@@ -77,9 +79,16 @@ defmodule Stache.Tokenizer do
     end
   end
 
-  def next_state(stream, next, state = %State{line: line}) do
-    state = add_token(state)
-    tokenize_loop(stream, %State{state| mode: next, start: line, buffer: ""})
+  def next_state(stream, next, state = %State{line: line, pos: p}, inc) do
+    # We increment the position of the token before we add it
+    # So that we know where this token ended.
+    pos_end = p + inc
+    state = add_token(%State{state|pos: pos_end})
+    pos_start = case state.buffer do
+      "" -> state.pos_start
+      _  -> pos_end
+    end
+    tokenize_loop(stream, %State{state|pos_start: pos_start, mode: next, start: line, buffer: ""})
   end
 
   defp add_token(state = %State{mode: :text, buffer: ""}), do: state
@@ -89,7 +98,8 @@ defmodule Stache.Tokenizer do
       :comment -> buffer
       _ -> String.strip(buffer)
     end
-    %State{state|tokens: [{mode, start, contents}|tokens]}
+    meta = %{line: start, pos_start: state.pos_start, pos_end: state.pos}
+    %State{state|tokens: [{mode, meta, contents}|tokens]}
   end
 
   defp tokenize_loop("", state = %State{mode: :text}) do
@@ -103,14 +113,14 @@ defmodule Stache.Tokenizer do
     {delim, dsize} = state.delim_start
     case stream do
       "{{{" <> stream ->
-        next_state(stream, :triple, state)
+        next_state(stream, :triple, state, 3)
       <<"{{":: binary, s :: binary-size(1), stream::binary>>
         when s in ["!", "="] ->
         next = case s do
           "!" -> :comment
           "=" -> :delimeter
         end
-        next_state(stream, next, state)
+        next_state(stream, next, state, 3)
       <<^delim::binary-size(dsize), s::binary-size(1), stream::binary>>
         when s in ["#", "^", "/", ">"] ->
         mode = case s do
@@ -119,29 +129,29 @@ defmodule Stache.Tokenizer do
           "/" -> :end
           ">" -> :partial
         end
-        next_state(stream, mode, state)
+        next_state(stream, mode, state, String.length(delim) + 1)
       <<^delim::binary-size(dsize), stream::binary>> ->
-        next_state(stream, :double, state)
+        next_state(stream, :double, state, String.length(delim))
       "\n" <> stream ->
-        next_state(stream, :text, %State{state|line: line + 1, buffer: buffer <> "\n"})
+        next_state(stream, :text, %State{state|line: line + 1, buffer: buffer <> "\n"}, 1)
       _ ->
         {c, stream} = String.next_codepoint(stream)
-        tokenize_loop(stream, %State{state|buffer: buffer <> c})
+        tokenize_loop(stream, %State{state|buffer: buffer <> c, pos: state.pos + 1})
     end
   end
 
   defp tokenize_loop("\n" <> stream, state = %State{line: line, buffer: buffer}) do
-    tokenize_loop(stream, %State{state|line: line + 1, buffer: buffer <> "\n"})
+    tokenize_loop(stream, %State{state|line: line + 1, buffer: buffer <> "\n", pos: state.pos + 1})
   end
 
   defp tokenize_loop("=}}" <> stream, state = %State{mode: :delimeter}) do
     with {:ok, state} <- delimeter_change(state),
-    do: next_state(stream, :text, state)
+    do: next_state(stream, :text, state, 3)
   end
 
   defp tokenize_loop("}}}" <> stream, state = %State{mode: :triple}) do
     # We've found a closing }}} after an open {{{.
-    next_state(stream, :text, state)
+    next_state(stream, :text, state, 3)
   end
 
   defp tokenize_loop(stream, state = %State{mode: m, start: start, line: line, buffer: buffer}) do
@@ -150,10 +160,10 @@ defmodule Stache.Tokenizer do
     case stream do
       <<^delim::binary-size(dsize), "\n", stream::binary>>
         when start != line and m in [:comment, :section, :inverted, :end] ->
-        next_state(stream, :text, %State{state|line: line + 1})
+        next_state(stream, :text, %State{state|line: line + 1}, String.length(delim) + 1)
       <<^delim::binary-size(dsize), stream::binary>>
         when m in [:double, :comment, :section, :inverted, :end, :partial] ->
-        next_state(stream, :text, state)
+        next_state(stream, :text, state, String.length(delim))
       <<^delim::binary-size(dsize), _::binary>> ->
         {:error, line, "Unexpected \"#{delim}\""}
       <<^sdelim::binary-size(sdsize), _::binary>> ->
@@ -162,7 +172,7 @@ defmodule Stache.Tokenizer do
       "}}}" <> _ -> {:error, line, "Unexpected \"}}}\"."}
       _ ->
         {c, stream} = String.next_codepoint(stream)
-        tokenize_loop(stream, %State{state|line: line, buffer: buffer <> c})
+        tokenize_loop(stream, %State{state|pos: state.pos + 1, line: line, buffer: buffer <> c})
     end
   end
 end

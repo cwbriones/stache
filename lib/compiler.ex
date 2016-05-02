@@ -5,12 +5,10 @@ defmodule Stache.Compiler do
   Compiles a template string into a form suitable for interpolation.
   """
   def compile(template, _opts \\ []) do
-    with {:ok, tokens} <- Tokenizer.tokenize(template)
+    with {:ok, tokens} <- Tokenizer.tokenize(template),
+         {:ok, parsed} <- parse(tokens, [])
     do
-      case parse(tokens, []) do
-        {:ok, parsed} -> {:ok, generate_buffer(parsed, "")}
-        e = {:error, _, _} -> e
-      end
+      {:ok, generate_buffer(parsed, "")}
     end
   end
 
@@ -90,11 +88,6 @@ defmodule Stache.Compiler do
     generate_buffer(tree, buffer)
   end
   def generate_buffer([_|tree], buffer), do: generate_buffer(tree, buffer)
-
-  def parse(template) do
-    with {:ok, tokens} <- Stache.Tokenizer.tokenize(template),
-    do: parse(tokens, [])
-  end
 
   # Parses a stream of tokens, nesting any sections and expanding
   # any shorthand.

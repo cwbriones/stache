@@ -127,4 +127,9 @@ defmodule TokenizerTest do
     assert {:ok, [{:end, _, "begin"}]} = tokenize("  {{/begin}}  \n")
     assert {:ok, [{:end, _, "begin"}]} = tokenize("  {{/begin\n}}\n")
   end
+
+  test "custom delimeters" do
+    assert {:ok, [{:double, _, "foo"}]} = tokenize("{{= [ ] =}}[foo]")
+    assert {:ok, [{:double, _, "foo"}]} = tokenize("[foo]", delimeters: {"[", "]"})
+  end
 end

@@ -14,6 +14,7 @@ defmodule Stache.Tokenizer do
       tokens: []
     ]
   end
+  @default_delimeters {"{{", "}}"}
 
   @doc """
   Tokenizes the given binary.
@@ -30,15 +31,25 @@ defmodule Stache.Tokenizer do
 
   Or {:error, line, error} in the case of errors.
   """
-  def tokenize(template, line \\ 1) do
-    state = %State{line: line, start: line}
+  def tokenize(template, opts \\ []) do
+    line = Keyword.get(opts, :line, 1)
+    delimeters = Keyword.get(opts, :delimeters, @default_delimeters)
+    state = set_delimeters(%State{line: line, start: line}, delimeters)
+
     with {:ok, tokens} <- tokenize_loop(template, state)
     do
       {:ok, strip(tokens)}
     end
   end
 
-  def strip(tokens) do
+  defp set_delimeters(state, {fst, snd}) do
+    %State{state|
+      delim_start: {fst, String.length(fst)},
+      delim_end:   {snd, String.length(snd)}
+    }
+  end
+
+  defp strip(tokens) do
     tokens
     |> Enum.chunk_by(fn t -> elem(t, 1) |> Access.get(:line) end)
     |> Enum.map(&strip_standalone/1)
@@ -70,10 +81,7 @@ defmodule Stache.Tokenizer do
       |> Enum.reject(&String.contains?(&1, "="))
     case delimeters do
       [fst, snd] ->
-        state = %State{state|
-          delim_start: {fst, byte_size(fst)},
-          delim_end: {snd, byte_size(snd)}
-        }
+        state = set_delimeters(state, {fst, snd})
         {:ok, state}
       _ -> {:error, line, "Improper delimeter change"}
     end
@@ -98,7 +106,12 @@ defmodule Stache.Tokenizer do
       :comment -> buffer
       _ -> String.strip(buffer)
     end
-    meta = %{line: start, pos_start: state.pos_start, pos_end: pos}
+
+    {fst, _} = state.delim_start
+    {snd, _} = state.delim_end
+    delimeters = {fst, snd}
+    meta = %{delimeters: delimeters, line: start, pos_start: state.pos_start, pos_end: pos}
+
     tokens = [{mode, meta, contents}|state.tokens]
     %State{state|tokens: tokens, buffer: "", start: state.line, pos_start: pos}
   end

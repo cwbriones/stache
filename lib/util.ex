@@ -15,9 +15,9 @@ defmodule Stache.Util do
     result
   end
 
-  def eval_lambda(scope, lambda, raw) do
+  def eval_lambda(scope, lambda, raw, delimeters) do
     template = to_string(lambda.(raw))
-    compiled = Stache.Compiler.compile!(template)
+    compiled = Stache.Compiler.compile!(template, delimeters: delimeters)
     {result, _} = Code.eval_quoted(compiled, stache_assigns: scope)
     result
   end

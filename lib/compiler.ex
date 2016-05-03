@@ -4,8 +4,8 @@ defmodule Stache.Compiler do
   @doc """
   Compiles a template string into a form suitable for interpolation.
   """
-  def compile(template, _opts \\ []) do
-    with {:ok, tokens} <- Tokenizer.tokenize(template),
+  def compile(template, opts \\ []) do
+    with {:ok, tokens} <- Tokenizer.tokenize(template, opts),
          {:ok, parsed} <- parse(tokens, [])
     do
       {:ok, generate_buffer(parsed, template, "")}
@@ -19,7 +19,7 @@ defmodule Stache.Compiler do
   """
   def compile!(template, opts \\ []) do
     file = Keyword.get(opts, :file, :nofile)
-    case compile(template) do
+    case compile(template, opts) do
       {:ok, compiled} -> compiled
       {:error, line, message} ->
         raise Stache.SyntaxError, message: message, line: line, file: file
@@ -54,13 +54,17 @@ defmodule Stache.Compiler do
     inner = generate_buffer(inner, template, "")
     raw_inner = slice_section(template, meta)
 
+    # TODO: Since we know the delimeters at compile time, we can remove the check
+    # if it uses the defaults.
+    delimeters = meta.delimeters
+
     buffer = quote do
       section = Stache.Util.scoped_lookup(var!(stache_assigns), unquote(vars))
       render_inner = fn var!(stache_assigns) -> unquote(inner) end
       unquote(buffer) <>
         case section do
           s when is_function(s) ->
-            Stache.Util.eval_lambda(var!(stache_assigns), s, unquote(raw_inner))
+            Stache.Util.eval_lambda(var!(stache_assigns), s, unquote(raw_inner), unquote(delimeters))
           s when s in [nil, false, []] -> ""
           [_|_] ->
             Enum.map(section, &render_inner.([&1|var!(stache_assigns)])) |> Enum.join
@@ -119,7 +123,7 @@ defmodule Stache.Compiler do
     do
       case parse(tokens, []) do
         {{:end, end_meta, ^key}, tokens, inner} ->
-          section_meta = %{pos_start: meta.pos_end, pos_end: end_meta.pos_start}
+          section_meta = %{meta|pos_start: meta.pos_end, pos_end: end_meta.pos_start}
           parse(tokens, [{section, keys, section_meta, inner}|parsed])
         {{:end, %{line: line}, endtag}, _, _} ->
           {:error, line, "Unexpected {{/#{endtag}}}"}

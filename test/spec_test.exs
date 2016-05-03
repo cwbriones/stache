@@ -141,7 +141,6 @@ defmodule SpecTest do
     assert Stache.eval_string(template, data) == expected
   end
 
-  @tag :skip
   test "Lambdas used for sections should parse with the current delimiters." do
     template = "{{= | | =}}<|#lambda|-|/lambda|>"
     expected = "<-{{planet}} => Earth->"

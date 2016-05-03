@@ -79,27 +79,28 @@ defmodule Stache.Tokenizer do
     end
   end
 
-  def next_state(stream, next, state = %State{line: line, pos: p}, inc) do
-    # We increment the position of the token before we add it
-    # So that we know where this token ended.
-    pos_end = p + inc
-    state = add_token(%State{state|pos: pos_end})
-    pos_start = case state.buffer do
-      "" -> state.pos_start
-      _  -> pos_end
+  defp next_state(stream, next, state = %State{mode: mode, pos: pos}, inc) do
+    new_pos = pos + inc
+    boundary = case {mode, next} do
+      # We just read a closing delimeter. It belongs to the current token.
+      {_, :text} -> new_pos
+      # We just read an opening delimeter. It belongs to the next token.
+      {:text, _} -> pos
     end
-    tokenize_loop(stream, %State{state|pos_start: pos_start, mode: next, start: line, buffer: ""})
+    state = add_token(%State{state|pos: boundary})
+    tokenize_loop(stream, %State{state|pos: new_pos, mode: next})
   end
 
   defp add_token(state = %State{mode: :text, buffer: ""}), do: state
-  defp add_token(state = %State{start: start, tokens: tokens, mode: mode, buffer: buffer}) do
+  defp add_token(state = %State{start: start, mode: mode, buffer: buffer, pos: pos}) do
     contents = case mode do
       :text -> buffer
       :comment -> buffer
       _ -> String.strip(buffer)
     end
-    meta = %{line: start, pos_start: state.pos_start, pos_end: state.pos}
-    %State{state|tokens: [{mode, meta, contents}|tokens]}
+    meta = %{line: start, pos_start: state.pos_start, pos_end: pos}
+    tokens = [{mode, meta, contents}|state.tokens]
+    %State{state|tokens: tokens, buffer: "", start: state.line, pos_start: pos}
   end
 
   defp tokenize_loop("", state = %State{mode: :text}) do

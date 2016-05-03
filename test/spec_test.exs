@@ -94,7 +94,6 @@ defmodule SpecTest do
     assert Stache.eval_string(template, data) == expected
   end
 
-  @tag :skip
   test "A lambda's return value should parse with the default delimiters." do
     template = "{{= | | =}}\nHello, (|&lambda|)!"
     expected = "Hello, (|planet| => world)!"
@@ -126,7 +125,6 @@ defmodule SpecTest do
     assert Stache.eval_string(template, data) == expected
   end
 
-  @tag :skip
   test "Lambdas used for sections should receive the raw section string." do
     template = "<{{#lambda}}{{x}}{{/lambda}}>"
     expected = "<yes>"
@@ -135,7 +133,6 @@ defmodule SpecTest do
     assert Stache.eval_string(template, data) == expected
   end
 
-  @tag :skip
   test "Lambdas used for sections should have their results parsed." do
     template = "<{{#lambda}}-{{/lambda}}>"
     expected = "<-Earth->"
@@ -153,7 +150,6 @@ defmodule SpecTest do
     assert Stache.eval_string(template, data) == expected
   end
 
-  @tag :skip
   test "Lambdas used for sections should not be cached." do
     template = "{{#lambda}}FILE{{/lambda}} != {{#lambda}}LINE{{/lambda}}"
     expected = "__FILE__ != __LINE__"

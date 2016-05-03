@@ -101,6 +101,14 @@ defmodule TokenizerTest do
     assert {:ok,
       [{:double, %{pos_start: 11, pos_end: 19}, "foobar"}]
     } = tokenize("{{= [ ] =}}[foobar]")
+
+    assert {:ok, [
+      {:section, %{line: 1, pos_start: 0, pos_end: 8}, "foo"},
+      {:text, %{line: 2, pos_start: 9, pos_end: 11}, "  "},
+      {:double, %{line: 2}, "bar"},
+      {:text, %{line: 2}, "\n"},
+      {:end, %{line: 3}, "foo"}
+    ]} = tokenize("{{#foo}}\n  {{bar}}\n{{/foo}}\n")
   end
 
   test "standalone section tags" do

@@ -8,7 +8,7 @@ defmodule Stache.Compiler do
     with {:ok, tokens} <- Tokenizer.tokenize(template),
          {:ok, parsed} <- parse(tokens, [])
     do
-      {:ok, generate_buffer(parsed, "")}
+      {:ok, generate_buffer(parsed, template, "")}
     end
   end
 
@@ -29,29 +29,30 @@ defmodule Stache.Compiler do
   @doc false
   # Translates a compiled file into a quoted elixir expression
   # for evaluation
-  def generate_buffer(tree, buffer \\ "")
-  def generate_buffer([], buffer), do: buffer
-  def generate_buffer([{:text, text}|tree], buffer) do
+  def generate_buffer(tree, template, buffer \\ "")
+  def generate_buffer([], _template, buffer), do: buffer
+  def generate_buffer([{:text, text}|tree], template, buffer) do
     buffer = quote do: unquote(buffer) <> unquote(text)
-    generate_buffer(tree, buffer)
+    generate_buffer(tree, template, buffer)
   end
-  def generate_buffer([{:double, keys}|tree], buffer) do
+  def generate_buffer([{:double, keys}|tree], template, buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
     buffer = quote do
       unquote(buffer) <> Stache.Util.escaped_var(var!(stache_assigns), unquote(vars))
     end
-    generate_buffer(tree, buffer)
+    generate_buffer(tree, template, buffer)
   end
-  def generate_buffer([{:triple, keys}|tree], buffer) do
+  def generate_buffer([{:triple, keys}|tree], template, buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
     buffer = quote do
       unquote(buffer) <> Stache.Util.var(var!(stache_assigns), unquote(vars))
     end
-    generate_buffer(tree, buffer)
+    generate_buffer(tree, template, buffer)
   end
-  def generate_buffer([{:section, keys, inner}|tree], buffer) do
+  def generate_buffer([{:section, keys, meta, inner}|tree], template, buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
-    inner = generate_buffer(inner, "")
+    inner = generate_buffer(inner, template, "")
+    raw_inner = slice_section(template, meta)
 
     buffer = quote do
       section = Stache.Util.scoped_lookup(var!(stache_assigns), unquote(vars))
@@ -59,7 +60,7 @@ defmodule Stache.Compiler do
       unquote(buffer) <>
         case section do
           s when is_function(s) ->
-            Stache.Util.eval_lambda(var!(stache_assigns), s, "")
+            Stache.Util.eval_lambda(var!(stache_assigns), s, unquote(raw_inner))
           s when s in [nil, false, []] -> ""
           [_|_] ->
             Enum.map(section, &render_inner.([&1|var!(stache_assigns)])) |> Enum.join
@@ -68,11 +69,12 @@ defmodule Stache.Compiler do
             render_inner.(new_assigns)
         end
     end
-    generate_buffer(tree, buffer)
+    generate_buffer(tree, template, buffer)
   end
-  def generate_buffer([{:inverted, keys, inner}|tree], buffer) do
+  def generate_buffer([{:inverted, keys, meta, inner}|tree], template, buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
-    inner = generate_buffer(inner, "")
+    inner = generate_buffer(inner, template, "")
+    raw_inner = slice_section(template, meta)
 
     buffer = quote do
       section = Stache.Util.scoped_lookup(var!(stache_assigns), unquote(vars))
@@ -85,22 +87,26 @@ defmodule Stache.Compiler do
           ""
         end
     end
-    generate_buffer(tree, buffer)
+    generate_buffer(tree, template, buffer)
   end
-  def generate_buffer([_|tree], buffer), do: generate_buffer(tree, buffer)
+  def generate_buffer([_|tree], template, buffer), do: generate_buffer(tree, template, buffer)
+
+  defp slice_section(template, %{pos_start: s, pos_end: e}) do
+    String.slice(template, s, e - s)
+  end
 
   # Parses a stream of tokens, nesting any sections and expanding
   # any shorthand.
   defp parse([], parsed), do: {:ok, Enum.reverse(parsed)}
-  defp parse([{:double, line, "&" <> key}|tokens], parsed), do: parse([{:triple, line, key}|tokens], parsed)
-  defp parse([{interp, line, key}|tokens], parsed) when interp in [:double, :triple] do
-    with {:ok, keys} <- validate_key(key, line)
+  defp parse([{:double, meta, "&" <> key}|tokens], parsed), do: parse([{:triple, meta, key}|tokens], parsed)
+  defp parse([{interp, meta, key}|tokens], parsed) when interp in [:double, :triple] do
+    with {:ok, keys} <- validate_key(key, meta)
     do
       parse(tokens, [{interp, keys}|parsed])
     end
   end
-  defp parse([{:partial, line, tag}|tokens], parsed) do
-    with {:ok, tag} <- validate_tag(tag, line)
+  defp parse([{:partial, meta, tag}|tokens], parsed) do
+    with {:ok, tag} <- validate_tag(tag, meta)
     do
       parse(tokens, [{:partial, tag}|parsed])
     end
@@ -108,13 +114,14 @@ defmodule Stache.Compiler do
   defp parse([token = {:end, _, _}|tokens], parsed) do
     {token, tokens, Enum.reverse(parsed)}
   end
-  defp parse([{section, line, key}|tokens], parsed) when section in [:section, :inverted] do
-    with {:ok, keys} <- validate_key(key, line)
+  defp parse([{section, meta =  %{line: line}, key}|tokens], parsed) when section in [:section, :inverted] do
+    with {:ok, keys} <- validate_key(key, meta)
     do
       case parse(tokens, []) do
-        {{:end, _, ^key}, tokens, inner} ->
-          parse(tokens, [{section, keys, inner}|parsed])
-        {{:end, line, endtag}, _, _} ->
+        {{:end, end_meta, ^key}, tokens, inner} ->
+          section_meta = %{pos_start: meta.pos_end, pos_end: end_meta.pos_start}
+          parse(tokens, [{section, keys, section_meta, inner}|parsed])
+        {{:end, %{line: line}, endtag}, _, _} ->
           {:error, line, "Unexpected {{/#{endtag}}}"}
         {:ok, _} ->
           {:error, line, "Reached EOF while searching for closing {{/#{key}}}"}
@@ -124,8 +131,8 @@ defmodule Stache.Compiler do
   end
   defp parse([{:text, _, contents}|tokens], parsed), do: parse(tokens, [{:text, contents}|parsed])
 
-  defp validate_key(".", _line), do: {:ok, ["."]}
-  defp validate_key(key, line) do
+  defp validate_key(".", _meta), do: {:ok, ["."]}
+  defp validate_key(key, %{line: line}) do
     case String.split(key, ".") do
       [""] -> {:error, line, "Interpolation key cannot be empty"}
       keys = [_ | _] ->
@@ -138,8 +145,8 @@ defmodule Stache.Compiler do
     end
   end
 
-  defp validate_tag(tag, line) do
-    case validate_key(tag, line) do
+  defp validate_tag(tag, meta = %{line: line}) do
+    case validate_key(tag, meta) do
       {:error, _, _} -> {:error, line, "Invalid section tag \"#{tag}\""}
       {:ok, [tag]} -> {:ok, tag}
       {:ok, _} -> {:error, line, "Invalid section tag \"#{tag}\""}

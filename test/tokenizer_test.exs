@@ -86,7 +86,6 @@ defmodule TokenizerTest do
       {:double, %{line: 1}, "foo"},
       {:text, %{line: 1}, "\n"},
       {:partial, %{line: 2}, "bar"},
-      {:text, %{line: 2}, "\n"},
       {:triple, %{line: 3}, "baz"},
       {:text, %{line: 3}, "\n"},
       {:text, %{line: 4}, "qux"}

@@ -22,6 +22,13 @@ defmodule Stache.Util do
     result
   end
 
+  def render_partial(partials, key, scope) do
+    case Map.get(partials, key) do
+      nil -> ""
+      f   -> f.(scope, partials)
+    end
+  end
+
   def escaped_var(scope, var), do: var(scope, var) |> escape_html
 
   def scoped_lookup([], _vars), do: nil

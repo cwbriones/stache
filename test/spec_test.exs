@@ -4,7 +4,7 @@ defmodule SpecTest do
   defmodule SpecReader do
     @specdir "test/specs"
     @ignore [
-      :lambdas, :partials
+      :lambdas
     ]
 
     def load_specs do
@@ -45,7 +45,7 @@ defmodule SpecTest do
     def keys_to_atoms(term), do: term
   end
 
-  for %{
+  for opts = %{
     file: f,
     index: idx,
     desc: desc,
@@ -56,14 +56,16 @@ defmodule SpecTest do
     @data data
     @exp exp
     @tem tem
+    @partials Access.get(opts, :partials, %{})
 
     name = desc <> " in file #{f}:#{idx}"
 
     test name do
-      result = Stache.eval_string(@tem, @data)
+      result = Stache.eval_string(@tem, @data, @partials)
       message = "
       Rendering Failed for template: #{inspect @tem}
-        context: #{inspect @data}
+        partials: #{inspect @partials}
+        context:  #{inspect @data}
         expected: #{inspect @exp}
         rendered: #{inspect result}
       "

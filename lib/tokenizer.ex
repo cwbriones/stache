@@ -65,7 +65,7 @@ defmodule Stache.Tokenizer do
     # If there is only one token on a line other than whitespace, and the token is
     # a control structure, we can remove the line entirely from the template.
     case filtered do
-      [{tag, _, _}] when tag in [:delimeter, :comment, :end, :section, :inverted] -> filtered
+      [{tag, _, _}] when tag in [:delimeter, :comment, :end, :section, :inverted, :partial] -> filtered
       _ -> line
     end
   end

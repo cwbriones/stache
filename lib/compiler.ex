@@ -75,10 +75,9 @@ defmodule Stache.Compiler do
     end
     generate_buffer(tree, template, buffer)
   end
-  def generate_buffer([{:inverted, keys, meta, inner}|tree], template, buffer) do
+  def generate_buffer([{:inverted, keys, _meta, inner}|tree], template, buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
     inner = generate_buffer(inner, template, "")
-    raw_inner = slice_section(template, meta)
 
     buffer = quote do
       section = Stache.Util.scoped_lookup(var!(stache_assigns), unquote(vars))
@@ -90,6 +89,14 @@ defmodule Stache.Compiler do
         else
           ""
         end
+    end
+    generate_buffer(tree, template, buffer)
+  end
+  def generate_buffer([{:partial, tag}|tree], template, buffer) do
+    key = String.to_atom(tag)
+    buffer = quote do
+      unquote(buffer) <>
+        Stache.Util.render_partial(var!(stache_partials), unquote(key), var!(stache_assigns))
     end
     generate_buffer(tree, template, buffer)
   end

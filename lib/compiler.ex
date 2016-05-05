@@ -92,11 +92,12 @@ defmodule Stache.Compiler do
     end
     generate_buffer(tree, template, buffer)
   end
-  def generate_buffer([{:partial, tag}|tree], template, buffer) do
+  def generate_buffer([{:partial, meta, tag}|tree], template, buffer) do
     key = String.to_atom(tag)
-    buffer = quote do
-      unquote(buffer) <>
-        Stache.Util.render_partial(var!(stache_partials), unquote(key), var!(stache_assigns))
+    indent = String.duplicate(" ", Map.get(meta, :indent, 0))
+    buffer = quote bind_quoted: [buffer: buffer, key: key, indent: indent] do
+      buffer <>
+        Stache.Util.render_partial(var!(stache_partials), key, var!(stache_assigns), indent)
     end
     generate_buffer(tree, template, buffer)
   end
@@ -119,7 +120,7 @@ defmodule Stache.Compiler do
   defp parse([{:partial, meta, tag}|tokens], parsed) do
     with {:ok, tag} <- validate_tag(tag, meta)
     do
-      parse(tokens, [{:partial, tag}|parsed])
+      parse(tokens, [{:partial, meta, tag}|parsed])
     end
   end
   defp parse([token = {:end, _, _}|tokens], parsed) do

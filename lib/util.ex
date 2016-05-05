@@ -22,11 +22,24 @@ defmodule Stache.Util do
     result
   end
 
-  def render_partial(partials, key, scope) do
+  def render_partial(partials, key, scope, indentation) do
     case Map.get(partials, key) do
       nil -> ""
-      f   -> f.(scope, partials)
+      partial ->
+        partial
+        |> indent(indentation)
+        |> eval_partial(scope, partials)
     end
+  end
+
+  defp indent(string, indent) do
+    indent <> (String.split(string, ~r/\n(?=.)/) |> Enum.join("\n" <> indent))
+  end
+
+  defp eval_partial(partial, scope, partials) do
+    compiled = Stache.Compiler.compile!(partial)
+    {result, _} = Code.eval_quoted(compiled, [stache_assigns: scope, stache_partials: partials])
+    result
   end
 
   def escaped_var(scope, var), do: var(scope, var) |> escape_html

@@ -4,7 +4,6 @@ defmodule Stache do
   """
   def eval_string(template, params, partials \\ %{}) do
     compiled = Stache.Compiler.compile!(template)
-    partials = precompile_partials(partials)
     {result, _} = Code.eval_quoted(compiled, [stache_assigns: [params], stache_partials: partials])
     result
   end
@@ -31,22 +30,4 @@ defmodule Stache do
       end
     end
   end
-
-  defp precompile_partials(params) do
-    params
-    |> Enum.map(fn {name, template} -> {name, compile_partial(template)} end)
-    |> Enum.into(%{})
-  end
-
-  defp compile_partial(template) do
-    compiled = Stache.Compiler.compile!(template)
-    quoted_f = quote do
-      fn var!(stache_assigns), var!(stache_partials) ->
-        unquote(compiled)
-      end
-    end
-    {f, _} = Code.eval_quoted(quoted_f)
-    f
-  end
-
 end

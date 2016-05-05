@@ -10,10 +10,6 @@ defmodule SpecTest do
     def load_specs do
       ignore = @ignore |> Enum.map(fn n -> to_string(n) <> ".yml" end)
 
-      unless Enum.empty?(ignore) do
-        IO.puts "Ignoring files in #{@specdir}: #{Enum.join(ignore, ", ")}"
-      end
-
       File.ls!(@specdir)
       |> Enum.reject(&Enum.member?(ignore, &1))
       |> Enum.map(&Path.join(@specdir, &1))

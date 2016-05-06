@@ -2,6 +2,7 @@ defmodule Stache.Tokenizer do
   @moduledoc false
 
   defmodule State do
+    @moduledoc false
     defstruct [
       line: 0,
       pos: 0,

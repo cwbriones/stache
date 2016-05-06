@@ -2,7 +2,9 @@ defmodule Stache.Compiler do
   alias Stache.Tokenizer
 
   @doc """
-  Compiles a template string into a form suitable for interpolation.
+  Compiles a template string into a quoted Elixir expression.
+
+  Returns `{:ok, ast}` or `{:error, reason}`.
   """
   def compile(template, opts \\ []) do
     with {:ok, tokens} <- Tokenizer.tokenize(template, opts),
@@ -13,7 +15,7 @@ defmodule Stache.Compiler do
   end
 
   @doc """
-  Compiles a template string into a form suitable for interpolation.
+  Compiles a template string into a quoted Elixir expression.
 
   Raises Stache.SyntaxError if one is encountered.
   """
@@ -53,9 +55,6 @@ defmodule Stache.Compiler do
     vars = Enum.map(keys, &String.to_atom/1)
     inner = generate_buffer(inner, template, "")
     raw_inner = slice_section(template, meta)
-
-    # TODO: Since we know the delimeters at compile time, we can remove the check
-    # if it uses the defaults.
     delimeters = meta.delimeters
 
     buffer = quote do

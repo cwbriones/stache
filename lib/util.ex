@@ -1,4 +1,6 @@
 defmodule Stache.Util do
+  @html_escape_codes [{"&", "&amp;"}, {"<", "&lt;"}, {">", "&gt;"}, {"\"", "&quot;"}]
+
   def var(scope, var) do
     val = scoped_lookup(scope, var)
     if is_function(val) do
@@ -8,18 +10,28 @@ defmodule Stache.Util do
     end
   end
 
+  def escaped_var(scope, var), do: var(scope, var) |> escape_html
+
   def eval_lambda(scope, lambda) do
-    template = to_string(lambda.())
-    compiled = Stache.Compiler.compile!(template)
-    {result, _} = Code.eval_quoted(compiled, stache_assigns: scope)
-    result
+    case lambda.() do
+      template when is_binary(template) ->
+        template
+        |> Stache.Compiler.compile!
+        |> Code.eval_quoted(stache_assigns: scope)
+        |> elem(0)
+      result -> to_string(result)
+    end
   end
 
   def eval_lambda(scope, lambda, raw, delimeters) do
-    template = to_string(lambda.(raw))
-    compiled = Stache.Compiler.compile!(template, delimeters: delimeters)
-    {result, _} = Code.eval_quoted(compiled, stache_assigns: scope)
-    result
+    case lambda.(raw) do
+      template when is_binary(template) ->
+        template
+        |> Stache.Compiler.compile!(delimeters: delimeters)
+        |> Code.eval_quoted(stache_assigns: scope)
+        |> elem(0)
+      result -> to_string(result)
+    end
   end
 
   def render_partial(partials, key, scope, indentation) do
@@ -37,12 +49,11 @@ defmodule Stache.Util do
   end
 
   defp eval_partial(partial, scope, partials) do
-    compiled = Stache.Compiler.compile!(partial)
-    {result, _} = Code.eval_quoted(compiled, [stache_assigns: scope, stache_partials: partials])
-    result
+    partial
+    |> Stache.Compiler.compile!
+    |> Code.eval_quoted([stache_assigns: scope, stache_partials: partials])
+    |> elem(0)
   end
-
-  def escaped_var(scope, var), do: var(scope, var) |> escape_html
 
   def scoped_lookup([], _vars), do: nil
   def scoped_lookup([s|_scopes], [:'.']), do: s
@@ -66,7 +77,7 @@ defmodule Stache.Util do
     |> escape_html("")
   end
 
-  for {k, v} <- [{"&", "&amp;"}, {"<", "&lt;"}, {">", "&gt;"}, {"\"", "&quot;"}] do
+  for {k, v} <- @html_escape_codes do
     def escape_html([unquote(k)|text], buffer), do: escape_html(text, buffer <> unquote(v))
   end
   def escape_html([t|text], buffer), do: escape_html(text, buffer <> t)

@@ -32,7 +32,9 @@ defmodule Stache.Mixfile do
 
   defp deps do
     [
-      {:yamler, git: "https://github.com/goertzenator/yamler", tag: "16ebac5c", only: :test}
+      {:yamler, git: "https://github.com/goertzenator/yamler", tag: "16ebac5c", only: :test},
+      {:ex_doc, "~> 0.11.4", only: :dev},
+      {:earmark, "~> 0.2.1", only: :dev},
     ]
   end
 end

@@ -20,6 +20,7 @@ defmodule Stache do
     |> Stache.Compiler.compile!
     |> Code.eval_quoted([stache_assigns: [context], stache_partials: partials])
     |> elem(0)
+    |> to_string
   end
 
   @doc """

@@ -19,6 +19,7 @@ defmodule Stache.Util do
         |> Stache.Compiler.compile!
         |> Code.eval_quoted(stache_assigns: scope)
         |> elem(0)
+        |> to_string
       result -> to_string(result)
     end
   end
@@ -30,6 +31,7 @@ defmodule Stache.Util do
         |> Stache.Compiler.compile!(delimeters: delimeters)
         |> Code.eval_quoted(stache_assigns: scope)
         |> elem(0)
+        |> to_string
       result -> to_string(result)
     end
   end

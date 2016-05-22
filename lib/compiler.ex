@@ -10,7 +10,7 @@ defmodule Stache.Compiler do
     with {:ok, tokens} <- Tokenizer.tokenize(template, opts),
          {:ok, parsed} <- parse(tokens, [])
     do
-      {:ok, generate_buffer(parsed, template, "")}
+      {:ok, generate_buffer(parsed, template, [])}
     end
   end
 
@@ -31,63 +31,63 @@ defmodule Stache.Compiler do
   @doc false
   # Translates a compiled file into a quoted elixir expression
   # for evaluation
-  def generate_buffer(tree, template, buffer \\ "")
+  def generate_buffer(tree, template, buffer \\ [])
   def generate_buffer([], _template, buffer), do: buffer
   def generate_buffer([{:text, text}|tree], template, buffer) do
-    buffer = quote do: unquote(buffer) <> unquote(text)
+    buffer = quote do: [unquote(buffer) | unquote(text)]
     generate_buffer(tree, template, buffer)
   end
   def generate_buffer([{:double, keys}|tree], template, buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
     buffer = quote do
-      unquote(buffer) <> Stache.Util.escaped_var(var!(stache_assigns), unquote(vars))
+      [unquote(buffer) | Stache.Util.escaped_var(var!(stache_assigns), unquote(vars))]
     end
     generate_buffer(tree, template, buffer)
   end
   def generate_buffer([{:triple, keys}|tree], template, buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
     buffer = quote do
-      unquote(buffer) <> Stache.Util.var(var!(stache_assigns), unquote(vars))
+      [unquote(buffer) | Stache.Util.var(var!(stache_assigns), unquote(vars))]
     end
     generate_buffer(tree, template, buffer)
   end
   def generate_buffer([{:section, keys, meta, inner}|tree], template, buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
-    inner = generate_buffer(inner, template, "")
+    inner = generate_buffer(inner, template, [])
     raw_inner = slice_section(template, meta)
     delimeters = meta.delimeters
 
     buffer = quote do
       section = Stache.Util.scoped_lookup(var!(stache_assigns), unquote(vars))
       render_inner = fn var!(stache_assigns) -> unquote(inner) end
-      unquote(buffer) <>
-        case section do
-          s when is_function(s) ->
-            Stache.Util.eval_lambda(var!(stache_assigns), s, unquote(raw_inner), unquote(delimeters))
-          s when s in [nil, false, []] -> ""
-          [_|_] ->
-            Enum.map(section, &render_inner.([&1|var!(stache_assigns)])) |> Enum.join
-          _ ->
-            new_assigns = [section|var!(stache_assigns)]
-            render_inner.(new_assigns)
-        end
+      rendered_section = case section do
+        s when is_function(s) ->
+          Stache.Util.eval_lambda(var!(stache_assigns), s, unquote(raw_inner), unquote(delimeters))
+        s when s in [nil, false, []] -> []
+        [_|_] ->
+          Enum.map(section, &render_inner.([&1|var!(stache_assigns)]))
+        _ ->
+          new_assigns = [section|var!(stache_assigns)]
+          render_inner.(new_assigns)
+      end
+      [unquote(buffer) | rendered_section]
     end
     generate_buffer(tree, template, buffer)
   end
   def generate_buffer([{:inverted, keys, _meta, inner}|tree], template, buffer) do
     vars = Enum.map(keys, &String.to_atom/1)
-    inner = generate_buffer(inner, template, "")
+    inner = generate_buffer(inner, template, [])
 
     buffer = quote do
       section = Stache.Util.scoped_lookup(var!(stache_assigns), unquote(vars))
       render_inner = fn var!(stache_assigns) -> unquote(inner) end
-      unquote(buffer) <>
-        if section in [nil, false, []] do
-            new_assigns = [section|var!(stache_assigns)]
-            render_inner.(new_assigns)
-        else
-          ""
-        end
+      rendered_section = if section in [nil, false, []] do
+        new_assigns = [section|var!(stache_assigns)]
+        render_inner.(new_assigns)
+      else
+        []
+      end
+      [unquote(buffer) | rendered_section]
     end
     generate_buffer(tree, template, buffer)
   end
@@ -95,8 +95,8 @@ defmodule Stache.Compiler do
     key = String.to_atom(tag)
     indent = String.duplicate(" ", Map.get(meta, :indent, 0))
     buffer = quote bind_quoted: [buffer: buffer, key: key, indent: indent] do
-      buffer <>
-        Stache.Util.render_partial(var!(stache_partials), key, var!(stache_assigns), indent)
+      rendered = Stache.Util.render_partial(var!(stache_partials), key, var!(stache_assigns), indent)
+      [buffer | rendered]
     end
     generate_buffer(tree, template, buffer)
   end
@@ -145,7 +145,7 @@ defmodule Stache.Compiler do
   defp validate_key(".", _meta), do: {:ok, ["."]}
   defp validate_key(key, %{line: line}) do
     case String.split(key, ".") do
-      [""] -> {:error, line, "Interpolation key cannot be empty"}
+      [[]] -> {:error, line, "Interpolation key cannot be empty"}
       keys = [_ | _] ->
         trimmed = Enum.map(keys, &String.strip/1)
         if Enum.all?(trimmed, &valid_key?/1) do
